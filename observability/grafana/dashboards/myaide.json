@@ -1,0 +1,68 @@
+{
+  "title": "MyAide",
+  "uid": "myaide",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "對話輪數（agent_requests_total）",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "agent_requests_total", "legendFormat": "requests" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "核准 vs 拒絕（approval_decisions_total）",
+      "type": "piechart",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "approval_decisions_total", "legendFormat": "{{decision}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "RBAC 拒絕次數（permission_denied_total）",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(permission_denied_total)", "legendFormat": "denied" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "工具錯誤率（tool_errors_total / tool_calls_total）",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "sum(tool_errors_total) / sum(tool_calls_total)", "legendFormat": "error rate" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "每個工具的呼叫次數（tool_calls_total by tool）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum by (tool) (rate(tool_calls_total[5m]))", "legendFormat": "{{tool}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "工具延遲 p95（tool_latency_seconds）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(tool_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{tool}} p95"
+        }
+      ]
+    }
+  ]
+}

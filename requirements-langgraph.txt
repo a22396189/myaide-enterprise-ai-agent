@@ -1,0 +1,34 @@
+# requirements-langgraph.txt
+#
+# 裝法（一定要在 requirements.txt 之後、用 --no-deps）：
+#   pip install -r requirements.txt
+#   pip install --no-deps -r requirements-langgraph.txt
+#
+# 為什麼要分開、還要用 --no-deps：
+# langgraph 1.x 系列的 langgraph-prebuilt 子套件在 PyPI 上宣告需要
+# langchain-core>=1.0.0，但這個專案其餘的 langchain-core/community/
+# text-splitters/google-genai 都還固定在 0.2.x（升級到 1.x 是更大的、
+# 獨立的遷移，這裡先不做）。兩邊放在同一次 `pip install -r
+# requirements.txt` 解析時，pip 會直接判定 ResolutionImpossible，
+# 拒絕安裝。
+#
+# 但這個判定只是 metadata 宣告過度保守，不是程式碼真的不相容：
+# 這個專案整個開發過程（graph/ 的 interrupt()／Command／checkpointer、
+# 23 個 pytest、8 個評測案例、真實瀏覽器操作、真的呼叫 Gmail API）
+# 都是在 langgraph==1.1.3 + langchain-core==0.2.43 這個確切組合下
+# 跑出來、驗證過的。--no-deps 讓 pip 跳過它自己的相依性檢查、直接裝
+# 這幾個釘死的版本，不會因為「宣告不相容」就整個安裝失敗。
+#
+# 這裡列的版本刻意包含 langgraph 自己的直接依賴（ormsgpack／orjson／
+# httpx／xxhash）——用 --no-deps 時 pip 不會連帶幫你裝這些，所以要
+# 明列，讓它們照常走一般的相依性解析（不加 --no-deps 也沒關係，
+# 反正 requirements.txt 那次安裝多半已經透過 chromadb 等套件裝好了）。
+
+langgraph==1.1.3
+langgraph-prebuilt==1.0.8
+langgraph-checkpoint==4.0.1
+langgraph-sdk==0.3.12
+ormsgpack==1.12.2
+orjson==3.11.7
+httpx==0.28.1
+xxhash==3.6.0

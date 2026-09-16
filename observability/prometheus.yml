@@ -1,0 +1,13 @@
+# observability/prometheus.yml
+# Streamlit app 本身不跑在容器裡（見 docker-compose.yml 的說明），
+# 所以用 host.docker.internal 讓容器裡的 Prometheus 連回主機上的
+# /metrics endpoint。app 要跑之前先設 ENABLE_METRICS=true，不然
+# 這個 target 會一直是 down（app 根本沒開那個 port）。
+
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "myaide"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]

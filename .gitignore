@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# 向量索引 / SQL 範例資料庫（由 ingest.py、sql_ingest.py 產生，不需入庫）
+chroma_db/
+enterprise_data/*.db
+enterprise_data/*.xlsx
+
+# 機密資訊
+.env
+credentials.json
+token.json
+.streamlit/secrets.toml
+
+# 執行期產生的紀錄／報告（P2-P6，不需入庫）
+logs/
+evals/report.json
+
+# 本機個人設定，不共用
+.claude/settings.local.json

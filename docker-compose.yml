@@ -1,0 +1,33 @@
+# docker-compose.yml
+# 只跑 Prometheus + Grafana 這兩個容器。Streamlit app 本身仍然直接在
+# 主機上用 `streamlit run app.py` 執行（不在這個 compose 裡）——把整個
+# app 容器化是更大的、獨立的改動，這裡先不做（見 README「Roadmap」）。
+#
+# 使用方式：
+#   1. 執行 app 前先設定 ENABLE_METRICS=true（否則 app 不會開 /metrics）
+#   2. docker compose up
+#   3. Prometheus targets：http://localhost:9090/targets
+#      Grafana（帳密 admin/admin）：http://localhost:3000
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
