@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 from langchain_core.tools import tool
 
 from tools.google_auth import get_credentials
+from tools.recipients import parse_emails
 
 
 def _calendar_service():
@@ -55,14 +56,17 @@ def draft_calendar_event(summary: str, start: str, end: str, attendees: str = ""
 def create_calendar_event(summary: str, start: str, end: str, attendees: str = "") -> str:
     """實際建立日曆事件。此函式刻意不包裝成 @tool，不會出現在 Agent 的工具清單中，
     只能由 app.py 在使用者明確點擊「確認建立」按鈕後呼叫。"""
+    valid, invalid = parse_emails(attendees)
+    if invalid:
+        raise ValueError(f"與會者不是有效的 email：{'、'.join(invalid)}")
     service = _calendar_service()
     event = {
         "summary": summary,
         "start": {"dateTime": start},
         "end": {"dateTime": end},
     }
-    if attendees:
-        event["attendees"] = [{"email": a.strip()} for a in attendees.split(",") if a.strip()]
+    if valid:
+        event["attendees"] = [{"email": a} for a in valid]
     created = service.events().insert(
         calendarId="primary", body=event, sendUpdates="all"
     ).execute()

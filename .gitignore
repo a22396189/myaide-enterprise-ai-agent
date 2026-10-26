@@ -19,5 +19,8 @@ token.json
 logs/
 evals/report.json
 
+# LangGraph Studio（langgraph dev）本機的 thread／checkpoint 暫存
+.langgraph_api/
+
 # 本機個人設定，不共用
 .claude/settings.local.json

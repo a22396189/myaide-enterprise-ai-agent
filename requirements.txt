@@ -1,36 +1,36 @@
-# 全部釘死成在這台機器上實際驗證過能一起裝好、也真的跑得動的版本組合
-# （不是隨便挑的，是 `pip freeze` 出來的），而不是用開放式的 >=。
+# 全部釘死成在這台機器上實際驗證過能一起裝好、也真的跑得動的版本組合，
+# 而不是用開放式的 >=：這個專案同時疊了 langchain 系列、google-genai、
+# sentence-transformers（帶 torch/transformers 整條 ML 依賴鏈），開放式
+# 範圍會讓 pip 的解析器 backtracking 很久甚至失敗。
 #
-# 原因：這個專案同時疊了 langchain 系列、google-generativeai、
-# sentence-transformers（帶 torch/transformers 整條 ML 依賴鏈）——
-# 開放式版本範圍會讓 pip 的相依性解析器在一個全新環境裡要嘗試非常多種
-# 版本組合，輕則跑很久、重則直接丟 "resolution-too-deep" 放棄，或是
-# backtracking 到很舊的 langchain-google-genai（1.0.1–1.0.6）版本，
-# 那些版本又要求 google-generativeai<0.6.0，跟我們自己需要的新版
-# google-generativeai 互斥，最後變成 "ResolutionImpossible"。
-# 全部釘死版本後，pip 完全不用做版本搜尋，安裝速度也快很多。
+# 2026-10 遷移到 langchain 1.x：gemini-2.5-flash 已不開放給新使用者，
+# Gemini 3.x 的 function calling 需要把 thought signature 帶回下一輪請求，
+# 舊的 langchain-google-genai 1.0.10 不支援（會回 400 missing thought_signature）。
+# 升級後 langgraph 與 langchain-core 版本宣告一致，不再需要
+# `pip install --no-deps` 分兩階段安裝。
 #
 # 升級任何一個套件前，建議先在乾淨的虛擬環境裡用
-# `pip install --dry-run -r requirements.txt` 確認新組合真的解得開。
+# `pip install --dry-run -r requirements.txt` 確認新組合真的解得開，
+# 並重跑 `pytest tests/ -v` 與 `python -m evals.run_evals --live`。
 
-langchain-core==0.2.43
-langchain-community==0.2.19
-langchain-text-splitters==0.2.4
-langchain-google-genai==1.0.10
-google-generativeai==0.7.2
+# LLM / Agent 編排
+langchain-core==1.7.0
+langchain-google-genai==4.4.2
+langgraph==1.2.17
+langchain-chroma==1.1.0
+
+# LangGraph Studio 本機 Agent Server（langgraph dev，見 README「LangGraph Studio」）。
+# 會把 grpcio 降到 1.81.1（grpcio-tools 的需求），chromadb 相容。
+langgraph-cli[inmem]==0.4.38
+langchain-text-splitters==1.1.3
+
+# 向量資料庫：維持 1.5.5，既有的 chroma_db/ 索引不需要重建
 chromadb==1.5.5
+
+# UI
 streamlit==1.55.0
 pypdf==6.9.2
 ddgs==9.12.0
-
-# Agent 編排（P1：LangGraph 取代 AgentExecutor，見 graph/）
-#
-# ⚠️ 不在這裡——LangGraph 系列套件刻意移到 requirements-langgraph.txt，
-# 用 `pip install --no-deps` 另外裝。原因見該檔案開頭的說明與
-# README「已知的安裝問題」一節，簡單講：langgraph 1.x 的 langgraph-prebuilt
-# 子套件宣告需要 langchain-core>=1.0，跟這裡固定的 0.2.x 系列在 pip 的
-# 一次性相依性解析裡會直接判定互斥（ResolutionImpossible），但兩者在
-# 程式碼層級其實相容、也是這個專案整個開發過程實際驗證過的組合。
 
 # 測試（tests/）
 pytest==9.1.1
@@ -48,15 +48,14 @@ google-api-python-client==2.193.0
 google-auth-httplib2==0.3.0
 google-auth-oauthlib==1.4.1
 
-# P6：SQL AST 驗證（取代關鍵字黑名單，見 security/sql_ast.py）
+# SQL AST 驗證（取代關鍵字黑名單，見 security/sql_ast.py）
 sqlglot==30.18.0
 
-# P4：可觀測性指標（純本機 /metrics endpoint，預設關閉，見 observability/metrics.py）
+# 可觀測性指標（純本機 /metrics endpoint，預設關閉，見 observability/metrics.py）
 prometheus-client==0.26.0
 
-# P5：本機 cross-encoder reranker（見 tools/reranker.py）。會連帶裝 torch，
-# 屬於這個專案目前最重的依賴——載入失敗時會自動 fallback 成不 rerank，
-# 不會讓 app 掛掉。
+# 本機 cross-encoder reranker（見 tools/reranker.py）。會連帶裝 torch，
+# 屬於這個專案目前最重的依賴——載入失敗時會自動 fallback 成不 rerank。
 sentence-transformers==6.0.1
 torch==2.14.0
 transformers==5.17.0

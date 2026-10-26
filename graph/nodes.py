@@ -58,7 +58,7 @@ DRAFT_TOOL_TYPES = {"draft_email", "draft_calendar_event"}
 SYSTEM_PROMPT = f"""你是{COMPANY_NAME}的企業 AI 助理，具備兩種能力：查詢企業知識與資料，以及協助執行 Email／行事曆任務。
 
 ## 你擁有的工具
-- search_knowledge_base：查詢公司規章、內部系統操作手冊、常見問題等文件
+- search_knowledge_base：查詢公司規章、作業程序與系統操作手冊（如 MES）、品質規範、常見問題等文件
 - list_database_tables、run_sql_query：查詢企業內部資料庫（客戶、訂單、產品等結構化資料），僅能執行 SELECT 唯讀查詢
 - search_email：搜尋使用者的 Gmail 信箱
 - draft_email：草擬郵件內容（不會寄出）
@@ -107,6 +107,13 @@ SYSTEM_PROMPT = f"""你是{COMPANY_NAME}的企業 AI 助理，具備兩種能力
 
 結尾加信心度：⬛⬛⬛⬛⬜ 很有把握｜⬛⬛⬛⬜⬜ 有把握｜⬛⬛⬜⬜⬜ 建議再確認"""
 
+# gemini-2.5-flash 已不開放給新使用者，改用 Gemini 3.8 Flash。
+# Gemini 3 官方建議 temperature 維持預設 1.0（調低可能導致迴圈或推理變差），
+# 所以這裡不再設 temperature=0；改用 thinking_level 控制思考深度與成本
+# （預設 low：工具選擇這類任務夠用，output token 也比 high 少很多）。
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_THINKING_LEVEL = os.environ.get("GEMINI_THINKING_LEVEL", "low")
+
 _llm = None
 _llm_api_key = ""
 
@@ -116,8 +123,9 @@ def _get_llm():
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if _llm is None or api_key != _llm_api_key:
         base = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0,
+            model=GEMINI_MODEL,
+            temperature=1.0,  # 套件預設 0.7，Gemini 3 官方建議 1.0
+            thinking_level=GEMINI_THINKING_LEVEL,
             google_api_key=api_key,
         )
         _llm = base.bind_tools(TOOLS)
@@ -200,7 +208,7 @@ def approval_node(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
     user, role = _identity(config)
     pending = state["pending_action"]
     last_ai_text = next(
-        (m.content for m in reversed(state["messages"]) if isinstance(m, AIMessage) and m.content),
+        (m.text for m in reversed(state["messages"]) if isinstance(m, AIMessage) and m.text),
         "",
     )
 

@@ -84,10 +84,12 @@ def _package(result: dict) -> dict[str, Any]:
                         src = line.split("：")[-1].rstrip("]")
                         sources.add(src)
 
+    # Gemini 3 的 AIMessage.content 可能是 content block 的 list（含 thought
+    # signature 等），.text 只取出純文字部分。
     answer = None
     for m in reversed(messages):
-        if isinstance(m, AIMessage) and m.content:
-            answer = m.content
+        if isinstance(m, AIMessage) and m.text:
+            answer = m.text
             break
 
     return {

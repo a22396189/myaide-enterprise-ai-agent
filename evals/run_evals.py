@@ -62,9 +62,12 @@ def _run_one_case(case: EvalCase, live: bool) -> dict:
         # 工具是 pydantic model instance，不允許事後幫它加/改 .invoke
         # 屬性（會丟 AttributeError），所以不能用 patch.object 改屬性，
         # 只能整個換掉 dict 裡的值。
-        if case.fake_tool_stub:
+        # fake_tool_stub 只在 --fake-llm 頂替（--live 要量測真實檢索）；
+        # tool_stub 兩種模式都頂替（案例本身的固定輸入，例如注入郵件）
+        stubs = {**case.tool_stub, **({} if live else case.fake_tool_stub)}
+        if stubs:
             stubbed = dict(nodes.TOOLS_BY_NAME)
-            for tool_name, stub_output in case.fake_tool_stub.items():
+            for tool_name, stub_output in stubs.items():
                 stubbed[tool_name] = _StubTool(stub_output)
             stack.enter_context(patch.object(nodes, "TOOLS_BY_NAME", stubbed))
 

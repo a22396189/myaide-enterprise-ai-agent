@@ -11,11 +11,19 @@
 
 from __future__ import annotations
 
+import os
+
 from observability.logging_config import get_logger
 
 _logger = get_logger("reranker")
 
-_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# 原本用英文模型 cross-encoder/ms-marco-MiniLM-L-6-v2，但知識庫是中文文件：
+# 2026-10 以 8 題中文查詢量測正確段落是否進前 4 名（Recall@4），
+#   不 rerank 8/8 · ms-marco（英文）5/8 · bge-reranker-base 8/8（CPU 約 4 秒/題）
+#   · bge-reranker-v2-m3 8/8（約 15 秒/題）
+# 英文模型反而把正確段落擠出前 4 名，因此改用多語模型 bge-reranker-base。
+# 設 RERANKER_MODEL=none 可關閉 rerank，直接用向量檢索順序。
+_MODEL_NAME = os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-base")
 _model = None
 _load_failed = False
 
@@ -24,6 +32,9 @@ def _get_model():
     global _model, _load_failed
     if _model is not None or _load_failed:
         return _model
+    if _MODEL_NAME.lower() == "none":
+        _load_failed = True  # 視同不可用：rerank() 會直接回傳原始順序
+        return None
     try:
         from sentence_transformers import CrossEncoder
         _model = CrossEncoder(_MODEL_NAME)

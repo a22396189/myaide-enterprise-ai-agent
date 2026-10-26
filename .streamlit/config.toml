@@ -1,0 +1,8 @@
+# Streamlit 設定（會提交進版控，不放任何機密；金鑰請放 secrets.toml）
+
+[server]
+# 關閉檔案監看。預設的監看器會在每次重跑腳本時掃描所有已載入的模組，
+# transformers（reranker 依賴）有上百個延遲載入的子模組，掃描時會逐一
+# import、大量失敗（例如 No module named 'torchvision'），佔用 CPU 讓
+# 每題回答變得非常慢。代價：修改程式碼後需手動重新整理頁面。
+fileWatcherType = "none"

@@ -4,10 +4,11 @@
 
 import os
 from pathlib import Path
-from langchain_community.document_loaders import TextLoader, PyPDFLoader
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 # ── 設定 ──────────────────────────────────────────────
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "your-api-key-here")
@@ -19,15 +20,16 @@ COLLECTION     = "company_knowledge"
 def load_documents(data_dir: Path):
     docs = []
     for file in sorted(data_dir.iterdir()):
+        # langchain-community 已停止維護，文件載入直接用 pypdf／讀檔，
+        # 不再依賴它的 TextLoader / PyPDFLoader
         if file.suffix == ".txt":
-            loader = TextLoader(str(file), encoding="utf-8")
-            loaded = loader.load()
+            loaded = [Document(page_content=file.read_text(encoding="utf-8"))]
             # 在 metadata 記錄來源檔名，方便引用
             for doc in loaded:
                 doc.metadata["source"] = file.name
                 doc.metadata["display_name"] = {
                     "company_policy.txt": "公司規章手冊",
-                    "SmartCem_Ops_Manual_v3.2.txt": "內部系統操作手冊（範例）",
+                    "MES_Ops_Manual_v1.0.txt": "MES 操作手冊",
                     "faq.txt":            "常見問題集",
                     "hr_confidential_salary_bands.txt": "薪資職等對照表（機密）",
                 }.get(file.name, file.name)
@@ -39,8 +41,11 @@ def load_documents(data_dir: Path):
                 }.get(file.name, "*")
             docs.extend(loaded)
         elif file.suffix == ".pdf":
-            loader = PyPDFLoader(str(file))
-            loaded = loader.load()
+            # 與 PyPDFLoader 相同：一頁一個 Document，metadata 帶頁碼
+            loaded = [
+                Document(page_content=page.extract_text() or "", metadata={"page": i})
+                for i, page in enumerate(PdfReader(str(file)).pages)
+            ]
             for doc in loaded:
                 doc.metadata["source"]       = file.name
                 doc.metadata["display_name"] = file.stem

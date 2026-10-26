@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "myaide": "./graph/studio.py:graph"
+  }
+}

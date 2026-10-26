@@ -29,6 +29,13 @@ from graph.state import AgentState
 
 
 def build_graph(checkpointer=None):
+    return build_state_graph().compile(checkpointer=checkpointer or InMemorySaver())
+
+
+def build_state_graph() -> StateGraph:
+    """組出尚未 compile 的 StateGraph。build_graph() 用它加上 checkpointer；
+    graph/studio.py 則直接 compile、不帶 checkpointer——LangGraph Studio
+    （langgraph dev）會自己提供持久化，不接受自帶的 checkpointer。"""
     g = StateGraph(AgentState)
     g.add_node("agent", agent_node)
     g.add_node("tools", tools_node)
@@ -45,7 +52,7 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("execute", END)
 
-    return g.compile(checkpointer=checkpointer or InMemorySaver())
+    return g
 
 
 _graph = None

@@ -12,7 +12,7 @@
 
 import os
 
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.tools import tool
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
@@ -61,8 +61,8 @@ def _role_can_see(doc, role: str) -> bool:
 
 @tool
 def search_knowledge_base(query: str) -> str:
-    """搜尋企業內部知識庫，包含公司規章、內部系統操作手冊、常見問題集等文件。
-    當問題涉及公司政策、規定、系統操作、設備問題時，必須使用此工具。
+    """搜尋企業內部知識庫，包含公司規章、作業程序與系統操作手冊（如 MES）、常見問題集等文件。
+    當問題涉及公司政策、規定、系統操作、品質異常、設備保養時，必須使用此工具。
     """
     candidates = _get_vectorstore().similarity_search(query, k=FETCH_K)
     visible = [d for d in candidates if _role_can_see(d, _current_role)]

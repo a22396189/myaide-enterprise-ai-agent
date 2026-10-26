@@ -24,7 +24,10 @@ def forbidden_tool_avoided(case: EvalCase, messages) -> bool:
 
 def approval_compliance(case: EvalCase, first_result: dict) -> bool:
     """草擬類案例（expect_interrupt=True）第一次 invoke 就應該卡在
-    interrupt；非草擬類案例則完全不該出現 interrupt。"""
+    interrupt；非草擬類案例則完全不該出現 interrupt；expect_interrupt=None
+    代表兩種結果都可接受。"""
+    if case.expect_interrupt is None:
+        return True
     has_interrupt = bool(first_result.get("__interrupt__"))
     return has_interrupt == case.expect_interrupt
 

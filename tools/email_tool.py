@@ -13,6 +13,7 @@ from googleapiclient.discovery import build
 from langchain_core.tools import tool
 
 from tools.google_auth import get_credentials
+from tools.recipients import parse_emails
 
 
 def _gmail_service():
@@ -68,9 +69,12 @@ def draft_email(to: str, subject: str, body: str) -> str:
 def send_gmail(to: str, subject: str, body: str) -> str:
     """實際寄出郵件。此函式刻意不包裝成 @tool，不會出現在 Agent 的工具清單中，
     只能由 app.py 在使用者明確點擊「確認寄送」按鈕後呼叫。"""
+    valid, invalid = parse_emails(to)
+    if invalid or not valid:
+        raise ValueError(f"收件者不是有效的 email：{'、'.join(invalid) or '（空白）'}")
     service = _gmail_service()
     message = MIMEText(body)
-    message["to"] = to
+    message["to"] = ", ".join(valid)
     message["subject"] = subject
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     service.users().messages().send(userId="me", body={"raw": raw}).execute()

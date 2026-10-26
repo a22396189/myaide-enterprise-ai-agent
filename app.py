@@ -6,6 +6,7 @@ from agent import ask, confirm
 from auth.users import DEFAULT_USER, DEMO_USERS
 from config import APP_SUBTITLE, APP_TITLE, COMPANY_NAME
 from observability.metrics import start_metrics_server
+from tools.recipients import parse_emails
 # 注意：這裡刻意不 import send_gmail / create_calendar_event。
 # 這兩個具有真實副作用的函式只存在於 graph/nodes.py 的 execute 節點裡，
 # 只有 graph 本身在人工核准後才會呼叫；UI 只透過 agent.confirm() 觸發 graph
@@ -400,15 +401,15 @@ with st.sidebar:
     st.markdown("""
     <div class="kb-item">
         <div class="kb-item-title">公司規章手冊</div>
-        <div class="kb-item-sub">上班／請假規定、薪資績效<br>資安規範、差旅報銷</div>
+        <div class="kb-item-sub">請假、薪資績效、資安規範<br>差旅報銷、廠區安全與品質</div>
     </div>
     <div class="kb-item">
-        <div class="kb-item-title">內部系統操作手冊（範例）</div>
-        <div class="kb-item-sub">安裝設定、功能說明<br>問題排解</div>
+        <div class="kb-item-title">MES 操作手冊（範例）</div>
+        <div class="kb-item-sub">工單與首件檢驗、批號追溯<br>品質異常處理、設備保養</div>
     </div>
     <div class="kb-item">
         <div class="kb-item-title">常見問題集</div>
-        <div class="kb-item-sub">員工福利、IT 支援<br>獎金計算</div>
+        <div class="kb-item-sub">員工福利、IT 支援<br>獎金計算、採購請購</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -432,10 +433,10 @@ with st.sidebar:
 
     example_qs = [
         "病假一年有幾天？薪資如何計算？",
-        "出差餐費補貼是多少？",
-        "密碼規定是什麼？",
+        "品質異常 Critical 等級要多久內通報？",
+        "測試儀器多久要校正一次？",
         "績效 A、月薪 60000、年資 3 年，年終獎金多少？",
-        "公司有語言學習補助嗎？",
+        "請購單超過 10 萬元要多久核准？",
         "銷售額最高的前五個國家是哪些？",
         "客戶編號 17850 買過哪些產品？",
         "幫我查一下這週的行事曆行程",
@@ -478,7 +479,7 @@ if not st.session_state.messages:
     st.markdown(f"""
     <div class="welcome-card">
         您好，我是{COMPANY_NAME}的 {APP_TITLE}。<br>
-        可協助查詢<strong>公司規章</strong>、<strong>內部系統操作</strong>及<strong>企業資料庫</strong>（訂單、客戶、產品），
+        可協助查詢<strong>公司規章</strong>、<strong>製造與品質作業程序</strong>及<strong>企業資料庫</strong>（訂單、客戶、產品），
         也能查詢與草擬 <strong>Email／行事曆</strong>任務，寄送與建立一律需要您手動確認。
         若內部資料無法回答，將自動搜尋外部公開資訊。<br>
         請在下方輸入問題，或從左側點選範例。
@@ -573,7 +574,12 @@ def render_interrupt(msg_idx, interrupt):
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("✅ 確認寄送", key=f"{key}_confirm", use_container_width=True):
-                    _resolve_interrupt(msg_idx, approve=True, edited_params={"to": to, "subject": subject, "body": body})
+                    valid, invalid = parse_emails(to)
+                    if invalid or not valid:
+                        # 不呼叫 confirm()：graph 維持暫停，使用者修正後可再按確認
+                        st.error(f"收件者需為有效的 email，請修正：{'、'.join(invalid) or '（空白）'}")
+                    else:
+                        _resolve_interrupt(msg_idx, approve=True, edited_params={"to": ", ".join(valid), "subject": subject, "body": body})
             with col2:
                 if st.button("❌ 拒絕", key=f"{key}_reject", use_container_width=True):
                     _resolve_interrupt(msg_idx, approve=False, edited_params=None)
@@ -584,14 +590,19 @@ def render_interrupt(msg_idx, interrupt):
             summary = st.text_input("標題", value=params.get("summary", ""), key=f"{key}_summary")
             start = st.text_input("開始時間（ISO 8601）", value=params.get("start", ""), key=f"{key}_start")
             end = st.text_input("結束時間（ISO 8601）", value=params.get("end", ""), key=f"{key}_end")
-            attendees = st.text_input("與會者（逗號分隔，可留空）", value=params.get("attendees", ""), key=f"{key}_attendees")
+            attendees = st.text_input("與會者 email（逗號分隔，可留空；填入後 Google 會寄邀請）", value=params.get("attendees", ""), key=f"{key}_attendees")
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("✅ 確認建立", key=f"{key}_confirm", use_container_width=True):
-                    _resolve_interrupt(
-                        msg_idx, approve=True,
-                        edited_params={"summary": summary, "start": start, "end": end, "attendees": attendees},
-                    )
+                    valid, invalid = parse_emails(attendees)
+                    if invalid:
+                        # 不呼叫 confirm()：graph 維持暫停，使用者修正後可再按確認
+                        st.error(f"與會者需填 email（不能填職稱或姓名），請修正或清空：{'、'.join(invalid)}")
+                    else:
+                        _resolve_interrupt(
+                            msg_idx, approve=True,
+                            edited_params={"summary": summary, "start": start, "end": end, "attendees": ", ".join(valid)},
+                        )
             with col2:
                 if st.button("❌ 拒絕", key=f"{key}_reject", use_container_width=True):
                     _resolve_interrupt(msg_idx, approve=False, edited_params=None)

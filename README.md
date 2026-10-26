@@ -135,13 +135,20 @@ SQL 查詢結果——稽核紀錄本身外洩亦屬資安風險之一。
 文件不會出現於候選結果中；人資角色查詢相同問題則可正常取得。
 
 **Reranking**：[`tools/reranker.py`](tools/reranker.py) 採用本機
-cross-encoder（`cross-encoder/ms-marco-MiniLM-L-6-v2`，透過
+多語 cross-encoder（`BAAI/bge-reranker-base`，透過
 `sentence-transformers`）對候選文件重新排序，取代單純依賴向量相似度
 的排序方式。此依賴套件包含 `torch`，為目前專案中體積最大的相依套件；
-首次執行時會下載模型，若下載或載入失敗，`rerank()` 會記錄警告訊息並
-回傳原始排序，不影響應用程式運作。（混合檢索／向量 + BM25 尚未
-實作，因目前無量測數據顯示純語意檢索的效果不足，詳見下方
-Roadmap。）
+首次執行時會下載模型（約 1 GB），若下載或載入失敗，`rerank()` 會記錄
+警告訊息並回傳原始排序，不影響應用程式運作。可用環境變數
+`RERANKER_MODEL` 更換模型，設為 `none` 則關閉 rerank。
+
+原本使用的英文模型 `cross-encoder/ms-marco-MiniLM-L-6-v2` 經量測不適合
+中文文件：以 8 題中文查詢檢查正確段落是否進入前 4 名，向量檢索本身
+8/8，英文模型重排後只剩 5/8（例如把年終獎金公式 FAQ Q10 擠出前 4 名），
+`bge-reranker-base` 8/8（CPU 約 4 秒/題），`bge-reranker-v2-m3` 8/8
+（約 15 秒/題）。在目前僅 17 個 chunk 的範例知識庫上，rerank 尚未顯示
+優於純向量檢索；文件量增加後才是它發揮作用的地方。（混合檢索／
+向量 + BM25 尚未實作，詳見下方 Roadmap。）
 
 ## 可觀測性
 
@@ -178,6 +185,34 @@ LangSmith 追蹤無須額外撰寫程式碼，LangChain/LangGraph 原生支援�
 設定 `LANGCHAIN_TRACING_V2=true` 與 `LANGCHAIN_API_KEY`（需自行申請
 LangSmith 帳號）即可啟用。
 
+### LangGraph Studio（視覺化與逐步除錯）
+
+[LangGraph Studio](https://docs.langchain.com/langsmith/quick-start-studio)
+會讀取 [`graph/build.py`](graph/build.py) 的 nodes 與 edges，自動畫出
+`__start__ → agent ⇄ tools → approval → execute → __end__` 的流程圖，並可
+逐步檢視每個節點的輸入、輸出與 State，也能直接看到 `approval` 節點的
+`interrupt()` 暫停。Studio 與 Streamlit 共用同一份 graph 定義
+（`build_state_graph()`），進入點是 [`graph/studio.py`](graph/studio.py)，
+設定檔是 [`langgraph.json`](langgraph.json)。
+
+```bash
+set PYTHONUTF8=1
+langgraph dev
+```
+
+啟動後以瀏覽器開啟
+https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+（需登入 LangSmith 帳號，免費方案即可）。
+
+- `PYTHONUTF8=1` 在繁體中文 Windows 上是必要的：`langgraph-api` 讀取
+  內部 schema 檔時未指定編碼，預設 cp950 會在啟動時 `UnicodeDecodeError`。
+- API Key 沿用 `.streamlit/secrets.toml`，不需另建 `.env`。
+- 角色與使用者由 run 的 `config.configurable` 傳入，例如
+  `{"user": "ben", "role": "sales"}`；未指定時預設為 `employee`
+  （最低權限，SQL 工具會被拒絕）。
+- 在 `approval` 暫停時，以 resume 值 `{"decision": "reject", "params": null}`
+  拒絕；`"approve"` **會真的寄出郵件／建立行程**。
+
 ## 測試與評測
 
 ```bash
@@ -192,9 +227,9 @@ python -m evals.run_evals     # 評測套件（預設 --fake-llm）
 評測資料集位於
 [`evals/datasets/core_cases.py`](evals/datasets/core_cases.py)
 （知識問答、Text-to-SQL、寄信／排行程、RBAC 拒絕、prompt injection、
-RAG 角色過濾，共 8 個案例），評分邏輯位於
+RAG 角色過濾、品質異常規範查詢，共 9 個案例），評分邏輯位於
 [`evals/evaluators.py`](evals/evaluators.py)。`--fake-llm` 模式以
-腳本化回應執行全部 8 個案例，用於驗證評測套件本身的執行機制；
+腳本化回應執行全部 9 個案例，用於驗證評測套件本身的執行機制；
 `--live` 模式（`python -m evals.run_evals --live`）改為執行真正的
 Gemini 模型，用以量測真實模型「是否選對工具、是否避免選用不當工具、
 應停留於核准節點時是否確實停留、RAG 是否引用正確來源」，執行前需
@@ -203,40 +238,48 @@ Gemini 模型，用以量測真實模型「是否選對工具、是否避免選�
 執行結果輸出至 `evals/report.json`（機器可讀）並於主控台顯示摘要
 表格。
 
-## 安裝
+**首次 `--live` 結果（2026-10-24，Gemini 3.8 Flash）**：第一次執行
+5/8。三個未通過案例檢查後都是**評測預期本身有誤**，而非模型行為錯誤：
+年終獎金案例原本禁止查知識庫，但公式在 FAQ Q10，正確答案應為
+108,000（原腳本只算 90,000，漏掉年資係數）；RBAC 案例預期模型先呼叫
+`run_sql_query`，但系統提示詞規定先呼叫 `list_database_tables`；
+注入案例預期模型「被騙去草擬」，實際上模型識破注入、完全沒有草擬。
+修正預期後連續兩次 8/8。所有案例的 `no_unsafe_action` 檢查（未經核准
+不得寄信／建立行程）在修正前後皆通過。
 
-**分兩階段安裝，順序不可顛倒：**
+**改為真實檢索後（2026-10-25）**：原本 `fake_tool_stub` 在 `--live`
+模式也會頂替工具輸出，RAG 案例其實沒有查詢向量庫。修正為只在
+`--fake-llm` 頂替（注入案例的惡意郵件改用兩種模式都頂替的
+`tool_stub`）後，年終獎金案例失敗——追查發現英文 reranker 把正確的
+FAQ 段落擠出前 4 名（見上方 Reranking 量測）。改用 `bge-reranker-base`
+後連續兩次 9/9。
+
+## 安裝
 
 ```bash
 pip install -r requirements.txt
-pip install --no-deps -r requirements-langgraph.txt
 ```
 
 <details>
-<summary>為何 LangGraph 需分開安裝（已知的 pip 相依性問題）</summary>
+<summary>模型與套件版本（2026-10 遷移至 langchain 1.x）</summary>
 
-`langgraph` 1.x 系列的子套件 `langgraph-prebuilt` 於 PyPI 上宣告需要
-`langchain-core>=1.0.0`，然而本專案其餘的 `langchain-core` /
-`langchain-community` / `langchain-text-splitters` /
-`langchain-google-genai` 仍固定於 0.2.x（升級至 langchain 1.x 屬於
-更大規模的獨立遷移工作，暫不在此範圍內）。若將兩者放入同一次
-`pip install -r requirements.txt` 解析，pip 會直接判定為
-`ResolutionImpossible`，拒絕安裝整個檔案。
+LLM 使用 **Gemini 3.8 Flash**（`gemini-3.8-flash`）。原本的
+`gemini-2.5-flash` 已不開放給新使用者（新專案呼叫會回 404），而
+Gemini 3.x 的 function calling 需要把 thought signature 帶回下一輪
+請求，舊版 `langchain-google-genai==1.0.10` 不支援（回 400
+`missing a thought_signature`）。因此整組升級至 `langchain-core` 1.x
+／`langchain-google-genai` 4.x／`langgraph` 1.2，並改用
+`langchain-chroma`。升級後各套件版本宣告一致，先前的
+`pip install --no-deps` 兩階段安裝已不再需要。
 
-此為套件 metadata 宣告過於保守所致，並非程式碼實際不相容：本專案的
-核心 human-in-the-loop 機制（`interrupt()` / `Command` /
-checkpointer）、23 個單元測試、實際瀏覽器操作、實際呼叫 Gmail API，
-皆已於 `langgraph==1.1.3` + `langchain-core==0.2.43` 此確切組合下
-驗證完成（並已於全新虛擬環境中重新驗證一次，確認分階段安裝流程本身
-亦無問題）。`--no-deps` 使 pip 略過對 `requirements-langgraph.txt`
-所列套件的相依性檢查，直接安裝這些鎖定版本，避免因 metadata 宣告
-不相容而導致整體安裝失敗。（亦曾評估改用 metadata 相容的
-`langgraph==0.3.34`，惟其 `invoke()` 回傳值未包含 `__interrupt__`
-欄位，偵測暫停狀態的邏輯需改用 `get_state()`，屬未經完整驗證的
-變更，風險高於現行做法，因此未予採用。）
+依官方 Gemini 3 指引，`temperature` 維持 1.0（調低可能導致迴圈或推理
+變差）；思考深度以 `thinking_level` 控制，預設 `low`。兩者可用環境
+變數 `GEMINI_MODEL`、`GEMINI_THINKING_LEVEL` 覆寫。`chromadb` 維持
+1.5.5，既有的 `chroma_db/` 索引不需重建（embedding 仍為
+`gemini-embedding-001`，官方停用日為 2028-05-14）。
 
-升級任一套件前，建議於乾淨的虛擬環境中依上述兩道指令重新安裝，並
-確認 `pytest tests/ -v` 全數通過。
+遷移後驗證結果：23 個單元測試全數通過、`--fake-llm` 評測 9/9、
+`--live` 評測（含真實向量檢索）連續兩次 9/9。
 
 </details>
 
@@ -278,8 +321,12 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 python ingest.py
 ```
 
-`data/` 目錄下含一份 `hr_confidential_salary_bands.txt` 範例機密
-文件，用於示範角色過濾檢索（詳見上方「知識檢索」）。
+`data/` 目錄下的範例文件皆為通用內容，不代表任何特定公司：員工手冊
+（含廠區安全與品質規範）、常見問題集、製造執行系統（MES）操作手冊
+（工單、首件檢驗、批號追溯、品質異常處理、設備保養），以及一份
+`hr_confidential_salary_bands.txt` 範例機密文件，用於示範角色過濾檢索
+（詳見上方「知識檢索」）。重新匯入前請先刪除 `chroma_db/`，
+`ingest.py` 會將文件附加到既有索引而非覆寫。
 
 ### 4. 建立企業 SQL 資料庫
 
@@ -344,7 +391,8 @@ data/                    內部文件（RAG 來源，含一份 RBAC 範例機密
 graph/
   state.py                AgentState（messages / pending_action / approval_decision / execution_result）
   nodes.py                 agent／tools／approval／execute 四個節點（RBAC 檢查、log／metrics／稽核皆於此處理）
-  build.py                  組裝 StateGraph 並編譯
+  build.py                  組裝 StateGraph 並編譯（build_state_graph／build_graph）
+  studio.py                 LangGraph Studio 進入點（langgraph.json 指向這裡）
 auth/
   users.py                 Demo 使用者清單（username → role）
   policy.py                 權限矩陣：is_tool_allowed(role, tool_name)
@@ -362,7 +410,7 @@ evals/
   run_evals.py                  CLI：--fake-llm（預設）/ --live
 tools/
   knowledge_base.py         RAG 檢索工具（角色過濾 + rerank）
-  reranker.py                 本機 cross-encoder
+  reranker.py                 本機多語 cross-encoder（bge-reranker-base）
   sql_query.py                 企業資料庫唯讀查詢工具（可切換正式資料庫）
   google_auth.py               Gmail / Calendar 共用 OAuth2
   email_tool.py                  Gmail 查詢／草擬／寄送
@@ -390,9 +438,9 @@ docker-compose.yml          Prometheus + Grafana（應用程式本身仍執行�
   重構，待實際需要支援多種前端（不限於 Streamlit）時再行評估
 - **應用程式容器化**：`docker-compose.yml` 目前僅啟動 Prometheus
   與 Grafana，Streamlit 應用程式本身仍直接執行於主機
-- **`--live` 評測報告**：`evals/run_evals.py --live` 之執行機制已
-  驗證可正常運作（`--fake-llm` 模式 8/8 通過），惟尚未產出一份對
-  真實模型執行的評測報告
+- **擴充評測集**：`--live` 已對 Gemini 3.8 Flash 連續兩次 9/9，但 9 個
+  案例的樣本數太小，尚不足以宣稱整體工具選擇準確率；下一步是擴充至
+  30–50 題並加入檢索指標（Recall@k）
 - **混合檢索**：向量 + BM25 之混合檢索尚未實作——目前無量測數據
   顯示純語意檢索效果不足
 - **資料庫層級 `statement_timeout`**：目前的查詢逾時機制為應用層

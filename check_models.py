@@ -1,30 +1,28 @@
 # check_models.py
 # 執行：python check_models.py
-# 列出你的 API key 可用的所有 embedding 模型
+# 列出你的 API key 可用的 LLM 與 embedding 模型（用 google-genai SDK，
+# 舊的 google-generativeai 套件已不再使用）
 
 import os
-import google.generativeai as genai
+
+from google import genai
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 if not GOOGLE_API_KEY:
     print("❌ 找不到 GOOGLE_API_KEY，請先設定環境變數")
     exit(1)
 
-genai.configure(api_key=GOOGLE_API_KEY)
+client = genai.Client(api_key=GOOGLE_API_KEY)
+models = list(client.models.list())
 
 print("=== 支援 generateContent 的 LLM 模型 ===\n")
-chat_models = []
-for m in genai.list_models():
-    if "generateContent" in m.supported_generation_methods:
-        print(f"  ✅ {m.name}")
-        chat_models.append(m.name)
+chat_models = [m.name for m in models if "generateContent" in (m.supported_actions or [])]
+for name in chat_models:
+    print(f"  ✅ {name}")
 
 print(f"\n=== 支援 embedContent 的 Embedding 模型 ===\n")
-embedding_models = []
-for m in genai.list_models():
-    if "embedContent" in m.supported_generation_methods:
-        print(f"  ✅ {m.name}")
-        embedding_models.append(m.name)
+embedding_models = [m.name for m in models if "embedContent" in (m.supported_actions or [])]
+for name in embedding_models:
+    print(f"  ✅ {name}")
 
-print(f"\n建議 LLM 使用：    {chat_models[0] if chat_models else '無'}")
-print(f"建議 Embedding 使用：{embedding_models[0] if embedding_models else '無'}")
+print(f"\n專案目前使用：LLM = gemini-3.8-flash，Embedding = gemini-embedding-001")
