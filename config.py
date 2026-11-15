@@ -16,3 +16,13 @@ APP_SUBTITLE = os.environ.get(
     "APP_SUBTITLE",
     "MyAide — 整合內部文件、企業資料庫、Email 與行事曆的知識查詢與任務執行 Agent",
 )
+
+# Agent 回答裡允許保留成「可點擊連結」的網域（逗號分隔，含子網域），例如
+# "example.com,intranet.example.com"。不在清單內的連結一律顯示成純文字網址，
+# 避免郵件／網頁裡的釣魚連結被模型整理成助理親自遞出的可點連結。預設為空：
+# 所有連結都不可點。見 ui_render.neutralize_links。
+ALLOWED_LINK_DOMAINS = [
+    d.strip().lower().lstrip(".")
+    for d in os.environ.get("ALLOWED_LINK_DOMAINS", "").split(",")
+    if d.strip()
+]

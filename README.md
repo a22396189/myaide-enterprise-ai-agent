@@ -293,6 +293,14 @@ set APP_TITLE=企業內部 AI 助理
 set APP_SUBTITLE=您的一句話說明
 ```
 
+Agent 回答中的連結預設一律顯示為不可點擊的純文字網址，以避免郵件或網頁
+內的釣魚連結經模型整理後成為可點擊的連結。若需保留公司內部網域的連結，
+可設定允許清單（逗號分隔，含子網域）：
+
+```bash
+set ALLOWED_LINK_DOMAINS=example.com,intranet.example.com
+```
+
 ### 2. 設定 Google API Key（RAG / LLM 必要）
 
 API Key 屬部署層級的基礎設施密鑰，設定優先順序為：
