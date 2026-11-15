@@ -7,7 +7,7 @@
 
 from typing import Any
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from graph.build import get_graph
@@ -61,7 +61,15 @@ def _package(result: dict) -> dict[str, Any]:
     if interrupts:
         interrupt_payload = interrupts[0].value
 
+    # checkpointer 依 thread_id 保存、add_messages 會累加，所以 result["messages"]
+    # 是整段對話。只取最後一個 HumanMessage 之後的訊息，避免前幾輪的工具步驟、
+    # 引用來源或回答被當成本輪內容。confirm() 以 Command(resume=...) 恢復時沒有
+    # 新的 HumanMessage，同一個邊界仍然指向本輪。
     messages = result.get("messages", [])
+    for idx in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[idx], HumanMessage):
+            messages = messages[idx + 1:]
+            break
 
     call_args_by_id: dict[str, Any] = {}
     for m in messages:

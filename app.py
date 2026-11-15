@@ -7,6 +7,7 @@ from auth.users import DEFAULT_USER, DEMO_USERS
 from config import APP_SUBTITLE, APP_TITLE, COMPANY_NAME
 from observability.metrics import start_metrics_server
 from tools.recipients import parse_emails
+from ui_render import neutralize_links, render_sources, render_steps
 # 注意：這裡刻意不 import send_gmail / create_calendar_event。
 # 這兩個具有真實副作用的函式只存在於 graph/nodes.py 的 execute 節點裡，
 # 只有 graph 本身在人工核准後才會呼叫；UI 只透過 agent.confirm() 觸發 graph
@@ -155,6 +156,16 @@ html, body, [class*="css"] {
     padding: 0.8rem 1rem;
     margin-bottom: 0.6rem;
     font-size: 0.82rem;
+}
+/* 外部內容（郵件／網頁／行事曆）：用黃色底區分，提醒使用者這不是系統說的話 */
+.step-card.external {
+    background: #FFFBEB;
+    border-color: #FCD34D;
+}
+.step-external-note {
+    font-size: 0.72rem;
+    color: #92400E;
+    margin: -0.2rem 0 0.45rem 0;
 }
 .step-header {
     display: flex;
@@ -487,43 +498,6 @@ if not st.session_state.messages:
     """, unsafe_allow_html=True)
 
 # ── 對話歷史 ──────────────────────────────────────────
-_TOOL_BADGE_CLASS = {
-    "web_search": "web",
-    "calculate": "calc",
-    "list_database_tables": "sql",
-    "run_sql_query": "sql",
-    "search_email": "mail",
-    "draft_email": "mail",
-    "list_calendar_events": "cal",
-    "draft_calendar_event": "cal",
-}
-
-
-def render_tool_badge(tool_name):
-    cls = _TOOL_BADGE_CLASS.get(tool_name, "")
-    return f'<span class="step-tool-badge {cls}">{tool_name}</span>'
-
-def render_sources(sources):
-    if not sources:
-        return ""
-    tags = "".join(f'<span class="source-tag">{s}</span>' for s in sources)
-    return f'<div class="source-row"><span class="source-label">引用來源</span>{tags}</div>'
-
-def render_steps(steps):
-    if not steps:
-        return
-    items = ""
-    for i, step in enumerate(steps, 1):
-        badge = render_tool_badge(step["tool"])
-        items += f"""
-        <div class="step-card">
-            <div class="step-header">步驟 {i} &nbsp; {badge}</div>
-            <div class="step-io">
-                <span class="step-io-label">輸入：</span>{step['input']}<br>
-                <span class="step-io-label">輸出：</span>{step['output']}
-            </div>
-        </div>"""
-    return items
 
 def _resolve_interrupt(msg_idx, approve, edited_params):
     """呼叫 agent.confirm() 恢復被 interrupt() 暫停的 graph。
@@ -609,7 +583,7 @@ def render_interrupt(msg_idx, interrupt):
 
 for msg_idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.markdown(neutralize_links(msg["content"]))
         if msg.get("sources"):
             st.markdown(render_sources(msg["sources"]), unsafe_allow_html=True)
         if msg.get("steps"):
@@ -646,7 +620,7 @@ if question:
                 steps     = []
                 interrupt = None
 
-        st.markdown(answer)
+        st.markdown(neutralize_links(answer))
         if sources:
             st.markdown(render_sources(sources), unsafe_allow_html=True)
         if steps:
